@@ -1,0 +1,18 @@
+using sysbus
+
+mach create "IoTDevice"
+machine LoadPlatformDescription @platforms/cpus/stm32f4.repl
+
+$bin?=@firmware/.pio/build/renode_stm32f4/firmware.elf
+sysbus LoadELF $bin
+
+emulation CreateServerSocketTerminal 12345 "uart"
+connector Connect sysbus.uart2 uart
+
+showAnalyzer sysbus.uart2
+logLevel -1
+
+start
+
+echo "STM32F4 IoT Device Started in Renode"
+echo "UART available on port 12345"
