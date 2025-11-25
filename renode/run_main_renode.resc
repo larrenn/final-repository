@@ -1,0 +1,21 @@
+﻿using sysbus
+
+# Create STM32 IoT Device machine
+mach create \"IoTDevice\"
+
+# Load STM32F4 platform description
+machine LoadPlatformDescription @platforms/cpus/stm32f4.repl
+
+# Load your compiled firmware
+sysbus LoadELF \"C:\Users\Student\Desktop\final work\final-repository\firmware\src\main_renode.elf\"
+
+# Setup UART for communication and debugging
+connector Connect sysbus.uart2 terminal
+showAnalyzer sysbus.uart2
+
+# Start emulation
+start
+
+echo \"=== STM32 IoT Device Started ===\"
+echo \"Firmware: main_renode.elf\"
+echo \"Waiting for sensor data output...\"

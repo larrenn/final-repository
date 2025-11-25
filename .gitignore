@@ -1,0 +1,5 @@
+__pycache__/
+*.db
+.pio/
+*.elf
+*.o
