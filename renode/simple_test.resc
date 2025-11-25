@@ -1,0 +1,21 @@
+using sysbus
+
+# Create machine
+mach create "TestDevice"
+
+# Load STM32 platform
+machine LoadPlatformDescription @platforms/cpus/stm32f4.repl
+
+# Connect UART
+connector Connect sysbus.uart2 terminal
+showAnalyzer sysbus.uart2
+
+# Start
+start
+
+echo "=== IoT Device Test ==="
+echo "This demonstrates firmware output simulation"
+
+# Simulate firmware output
+sysbus.uart2 Write "{\"device_id\":1234567890,\"timestamp\":1000,\"temperature\":23.5,\"humidity\":45.2,\"pressure\":1013,\"status\":1}\n"
+sysbus.uart2 Write "{\"device_id\":1234567890,\"timestamp\":5000,\"temperature\":24.1,\"humidity\":46.8,\"pressure\":1012,\"status\":1}\n"
