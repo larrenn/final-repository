@@ -36,6 +36,7 @@ class SyncManager:
             print("RabbitMQ not connected, skipping sync")
             return
         
+        # Получаем несинхронизированные данные
         unsynced_data = self.db_manager.get_unsynced_data(limit=50)
         
         if not unsynced_data:
@@ -47,6 +48,7 @@ class SyncManager:
         
         for record in unsynced_data:
             try:
+                # Подготовка данных для отправки
                 mqtt_data = {
                     'id': record['id'],
                     'device_id': record['device_id'],
@@ -58,12 +60,15 @@ class SyncManager:
                     'received_at': record['received_at']
                 }
                 
+                # Отправка в RabbitMQ
                 if self.mqtt_manager.publish_data(mqtt_data):
                     successful_syncs.append(record['id'])
+                    print(f"✓ Synced record {record['id']} to RabbitMQ")
                     
             except Exception as e:
                 print(f"Error syncing record {record['id']}: {e}")
         
+        # Помечаем успешно синхронизированные записи
         if successful_syncs:
             self.db_manager.mark_as_synced(successful_syncs)
             print(f"✓ Successfully synced {len(successful_syncs)} records")

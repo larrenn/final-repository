@@ -10,6 +10,7 @@ class TCPServer:
         self.on_data_received = on_data_received
         self.socket = None
         self.running = False
+        self.clients = []
         
     def start(self):
         """Запуск TCP сервера"""
@@ -21,20 +22,23 @@ class TCPServer:
             self.socket.settimeout(1.0)
             
             self.running = True
-            print(f"TCP Server listening on {self.host}:{self.port}")
+            print(f"✅ TCP Server listening on {self.host}:{self.port}")
             
             while self.running:
                 try:
                     client_socket, client_address = self.socket.accept()
-                    print(f"New connection from {client_address}")
+                    print(f"🔌 New connection from {client_address}")
                     
                     # Обработка клиента в отдельном потоке
                     client_thread = threading.Thread(
                         target=self._handle_client,
-                        args=(client_socket, client_address)
+                        args=(client_socket, client_address),
+                        name=f"Client-{client_address}"
                     )
                     client_thread.daemon = True
                     client_thread.start()
+                    
+                    self.clients.append((client_socket, client_thread))
                     
                 except socket.timeout:
                     continue
@@ -44,7 +48,7 @@ class TCPServer:
                     break
                     
         except Exception as e:
-            print(f"TCP Server error: {e}")
+            print(f"❌ TCP Server error: {e}")
         finally:
             self.stop()
     
@@ -59,7 +63,7 @@ class TCPServer:
                 try:
                     data = client_socket.recv(1024).decode('utf-8')
                     if not data:
-                        break
+                        break  # Соединение закрыто клиентом
                     
                     buffer += data
                     
@@ -77,18 +81,30 @@ class TCPServer:
                 except ConnectionResetError:
                     break
                 except Exception as e:
-                    print(f"Client handling error: {e}")
+                    print(f"❌ Client handling error: {e}")
                     break
                     
         except Exception as e:
-            print(f"Client thread error: {e}")
+            print(f"❌ Client thread error: {e}")
         finally:
             client_socket.close()
-            print(f"Connection closed: {client_address}")
+            print(f"🔌 Connection closed: {client_address}")
     
     def stop(self):
         """Остановка сервера"""
+        if not self.running:
+            return
+            
         self.running = False
+        
         if self.socket:
             self.socket.close()
-        print("TCP Server stopped")
+        
+        # Закрытие всех клиентских соединений
+        for client_socket, _ in self.clients:
+            try:
+                client_socket.close()
+            except:
+                pass
+        
+        print("✅ TCP Server stopped")

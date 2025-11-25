@@ -50,7 +50,9 @@ class DatabaseManager:
         ))
         
         self.connection.commit()
-        return cursor.lastrowid
+        record_id = cursor.lastrowid
+        print(f"✓ Data saved to database from device {data['device_id']} (ID: {record_id})")
+        return record_id
     
     def get_unsynced_data(self, limit=100):
         """Получение несинхронизированных данных"""
@@ -86,6 +88,7 @@ class DatabaseManager:
         ''', record_ids)
         
         self.connection.commit()
+        print(f"✓ Marked {len(record_ids)} records as synced")
     
     def delete_old_synced_data(self, hours=1):
         """Удаление старых синхронизированных данных"""

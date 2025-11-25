@@ -2,6 +2,8 @@
 import threading
 import time
 import json
+import signal
+import sys
 from database import DatabaseManager
 from mqtt_handler import MQTTManager
 from sync_manager import SyncManager
@@ -18,15 +20,27 @@ class IoTApplication:
         self.tcp_server = None
         self.sync_manager = None
         
+        # Настройка обработки Ctrl+C
+        signal.signal(signal.SIGINT, self.signal_handler)
+        signal.signal(signal.SIGTERM, self.signal_handler)
+        
+    def signal_handler(self, signum, frame):
+        """Обработчик сигналов для корректного завершения"""
+        print(f"\nReceived signal {signum}, shutting down...")
+        self.stop()
+        sys.exit(0)
+        
     def initialize(self):
         """Инициализация всех компонентов системы"""
         print("=== Initializing IoT Data Processing System ===")
         
         try:
+            # 1. База данных
             self.db_manager = DatabaseManager(self.settings.DATABASE_URL)
             self.db_manager.initialize()
             print("✓ Database initialized")
             
+            # 2. RabbitMQ
             self.mqtt_manager = MQTTManager(
                 host=self.settings.RABBITMQ_HOST,
                 port=self.settings.RABBITMQ_PORT
@@ -34,6 +48,7 @@ class IoTApplication:
             self.mqtt_manager.connect()
             print("✓ RabbitMQ connected")
             
+            # 3. TCP сервер для приема данных
             self.tcp_server = TCPServer(
                 host=self.settings.TCP_SERVER_HOST,
                 port=self.settings.TCP_SERVER_PORT,
@@ -41,6 +56,7 @@ class IoTApplication:
             )
             print("✓ TCP server configured")
             
+            # 4. Менеджер синхронизации
             self.sync_manager = SyncManager(
                 db_manager=self.db_manager,
                 mqtt_manager=self.mqtt_manager,
@@ -65,8 +81,9 @@ class IoTApplication:
                 print(f"Invalid data format from {client_address}")
                 return
             
-            self.db_manager.save_sensor_data(sensor_data)
-            print(f"✓ Data saved from device {sensor_data['device_id']}")
+            # Сохраняем в базу данных (помечаем как несинхронизированное)
+            record_id = self.db_manager.save_sensor_data(sensor_data)
+            print(f"✓ Data received from device {sensor_data['device_id']} (ID: {record_id})")
             
         except json.JSONDecodeError as e:
             print(f"JSON decode error from {client_address}: {e}")
@@ -80,22 +97,27 @@ class IoTApplication:
             return
         
         print("=== Starting IoT System ===")
+        print("Press Ctrl+C to stop the system")
         
         try:
-            tcp_thread = threading.Thread(target=self.tcp_server.start)
+            # Запуск TCP сервера в отдельном потоке
+            tcp_thread = threading.Thread(target=self.tcp_server.start, name="TCP-Server")
             tcp_thread.daemon = True
             tcp_thread.start()
             print("✓ TCP server started")
             
-            sync_thread = threading.Thread(target=self.sync_manager.start)
+            # Запуск синхронизации в отдельном потоке
+            sync_thread = threading.Thread(target=self.sync_manager.start, name="Sync-Manager")
             sync_thread.daemon = True
             sync_thread.start()
             print("✓ Sync manager started")
             
+            print("✓ System fully operational with RabbitMQ!")
+            print("Waiting for incoming connections...")
+            
+            # Основной цикл с улучшенной обработкой
             self._main_loop()
             
-        except KeyboardInterrupt:
-            print("\nShutting down...")
         except Exception as e:
             print(f"System error: {e}")
         finally:
@@ -103,14 +125,20 @@ class IoTApplication:
     
     def _main_loop(self):
         """Основной цикл приложения"""
+        stats_counter = 0
+        
         while self.running:
             try:
-                stats = self.db_manager.get_statistics()
-                print(f"Database stats - Total: {stats['total']}, Unsynced: {stats['unsynced']}, Devices: {stats['unique_devices']}")
+                # Показываем статистику каждые 10 итераций (примерно каждые 10 секунд)
+                if stats_counter % 10 == 0:
+                    stats = self.db_manager.get_statistics()
+                    print(f"📊 Database stats - Total: {stats['total']}, Unsynced: {stats['unsynced']}, Devices: {stats['unique_devices']}")
                 
-                time.sleep(10)
+                stats_counter += 1
+                time.sleep(1)  # Уменьшаем задержку для более отзывчивого Ctrl+C
                 
             except KeyboardInterrupt:
+                print("\n🛑 Keyboard interrupt received")
                 break
             except Exception as e:
                 print(f"Main loop error: {e}")
@@ -118,7 +146,10 @@ class IoTApplication:
     
     def stop(self):
         """Корректная остановка системы"""
-        print("Stopping IoT system...")
+        if not self.running:
+            return
+            
+        print("🛑 Stopping IoT system...")
         self.running = False
         
         if self.tcp_server:
@@ -127,8 +158,10 @@ class IoTApplication:
             self.sync_manager.stop()
         if self.mqtt_manager:
             self.mqtt_manager.disconnect()
+        if self.db_manager:
+            self.db_manager.close()
         
-        print("System stopped")
+        print("✅ System stopped gracefully")
 
 if __name__ == "__main__":
     app = IoTApplication()
@@ -136,5 +169,9 @@ if __name__ == "__main__":
     try:
         app.initialize()
         app.start()
+    except KeyboardInterrupt:
+        print("\n🛑 Application interrupted during initialization")
+        app.stop()
     except Exception as e:
-        print(f"Application failed to start: {e}")
+        print(f"❌ Application failed to start: {e}")
+        app.stop()
